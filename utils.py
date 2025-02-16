@@ -28,18 +28,16 @@ def call_openai(prompt):
     )
     return response["choices"][0]["message"]["content"]
 
-def get_gradients(model, prompt, direction, downstream_layer=10):
-    # gradients = {layer: None for layer in range(downstream_layer)}
-    gradients=defaultdict(torch.Tensor)
+def get_gradients(model, prompt, direction, downstream_layer=15):
+    gradients = {layer: None for layer in range(downstream_layer)}
+    # gradients=defaultdict(torch.Tensor)
     with torch.enable_grad():
         with model.trace(prompt, scan=True, validate=True) as tracer:
             for layer in range(downstream_layer):
                 gradients[layer] = model.model.layers[layer].output[0].grad.save()  # ctx d_model
             activation = model.model.layers[downstream_layer].output[0]
-            d,a=direction.shape.save(),activation.shape.save()
             projection = einops.einsum(direction.float(), activation, 'dim, batch ctx dim -> batch ctx')[0, -1]
-            projection.backward()
-        print(d,a)    
+            projection.backward() 
     return gradients
         
 # @dataclass
