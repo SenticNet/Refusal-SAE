@@ -36,7 +36,7 @@ def get_gradients(model, prompt, direction, downstream_layer=15):
             for layer in range(downstream_layer):
                 gradients[layer] = model.model.layers[layer].output[0].grad.save()  # ctx d_model
             activation = model.model.layers[downstream_layer].output[0]
-            projection = einops.einsum(direction.float(), activation, 'dim, batch ctx dim -> batch ctx')[0, -1]
+            projection = einops.einsum(direction.half(), activation, 'dim, batch ctx dim -> batch ctx')[0, -1]
             projection.backward() 
     return gradients
         
