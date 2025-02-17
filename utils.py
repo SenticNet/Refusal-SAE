@@ -32,7 +32,7 @@ def get_gradients(model, prompt, direction, downstream_layer=15):
     gradients = {layer: None for layer in range(downstream_layer)}
     # gradients=defaultdict(torch.Tensor)
     with torch.enable_grad():
-        with model.trace(prompt, scan=True, validate=True) as tracer:
+        with model.trace(prompt) as tracer:
             for layer in range(downstream_layer):
                 gradients[layer] = model.model.layers[layer].output[0].grad.save()  # ctx d_model
             activation = model.model.layers[downstream_layer].output[0]

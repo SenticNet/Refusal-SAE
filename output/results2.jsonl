@@ -1,0 +1,10 @@
+{"module_path": ".model.layers.0", "feature_id": 62436, "category": "Disinformation", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.0", "feature_id": 31397, "category": "Sexual/Adult content", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.0", "feature_id": 52414, "category": "Government decision-making", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.4", "feature_id": 37078, "category": "Physical harm", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.5", "feature_id": 41112, "category": "Disinformation", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.6", "feature_id": 32931, "category": "Sexual/Adult content", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.6", "feature_id": 23500, "category": "Malware/Hacking", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.10", "feature_id": 3312, "category": "Sexual/Adult content", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.12", "feature_id": 51688, "category": "Sexual/Adult content", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
+{"module_path": ".model.layers.13", "feature_id": 63806, "category": "Sexual/Adult content", "t_stat": -0.530156046783729, "p_value": 0.5960094937840721}
