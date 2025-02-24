@@ -14,6 +14,7 @@ import einops
 # call openai skeleton
 import openai
 from collections import defaultdict
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def call_openai(prompt):
     # openai.api_key = api_key
@@ -39,6 +40,62 @@ def get_gradients(model, prompt, direction, downstream_layer=15):
             projection = einops.einsum(direction.half(), activation, 'dim, batch ctx dim -> batch ctx')[0, -1]
             projection.backward() 
     return gradients
+
+def hook(module, input, output, ablation_vector,features,layer):
+    if isinstance(output, tuple):
+        activation = output[0]
+        if len(output)>1:
+            print(output[1])
+    else:
+        activation = output
+
+    if activation.shape[1]>1:
+        ablation_vector=einsum( ablation_vector[:,:,features[layer]],model.model.layers[layer].ae.ae.W_dec[features[layer],:],'b c i, i d -> b c d')
+        activation= activation - ablation_vector
+    
+    if isinstance(output, tuple):
+        return (activation, *output[1:])
+    else:
+        return activation
+
+def feature_ablate(model_name,model, prompt,features):
+    ablations={}   
+    with model.trace() as tracer:
+        with tracer.invoke(prompt) as invoker:
+            for layer,indices in features.items():
+                ablations[layer]=model.model.layers[layer].ae.output.save()           
+                
+    # ablations[layer]=torch.mul(activations[:,:,indices],model.model.layers[layer].ae.ae.W_dec[indices,:]).save()
+    
+    auto_model=AutoModelForCausalLM.from_pretrained(model_name).cuda()
+    auto_tokenizer=AutoTokenizer.from_pretrained(model_name)
+    hook_handles = []
+   
+    for name, module in auto_model.named_modules():
+        if "model.layers." == name[:-1]:  # Modify all transformer layers
+            if int(name.replace("model.layers.","")) not in features.keys():
+                continue
+            handle = module.register_forward_hook(partial(hook, ablation_vector=ablations[int(name.replace("model.layers.",""))],features=features,layer=layer))
+            hook_handles.append(handle)    
+    with torch.no_grad():
+        inputs=auto_tokenizer(prompt, return_tensors="pt").to("cuda")
+        output_ids = auto_model.generate(**inputs, max_new_tokens=100, do_sample=False)
+    for handle in hook_handles:
+        handle.remove()
+    generated_text = auto_tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    return generated_text 
+
+    
+# def ablate_direction(model, prompt, direction, downstream_layer=15):
+#     direction=direction/ direction.norm()
+#     with torch.no_grad():
+#         with model.generate(prompt, max_new_tokens=100, num_return_sequences=1, do_sample=False, scan=True, validate=True) as gen:
+#             for layer in range(downstream_layer):
+#                 out,cache=model.model.layers[layer].output
+#                 proj= einops.einsum(direction.half(), out, 'dim, batch ctx dim -> batch ctx')
+#                 # model.model.layers[layer].output = (out - proj.unsqueeze(-1) * direction,cache)
+#             tokens = gen.generator.output.save() 
+#         return model.tokenizer.batch_decode(tokens[0], skip_special_tokens=True)    
         
 # @dataclass
 # class AutoencoderConfig(Serializable):

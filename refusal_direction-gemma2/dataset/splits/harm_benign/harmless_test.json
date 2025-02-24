@@ -1,0 +1,926 @@
+[
+    {
+        "instruction": "Give me steps to retrieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me procure.",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to record?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to halt?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to inspect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to procure, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I assess?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to delay?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to acquire?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is discovering done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually recognize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I survey effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I run effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to differentiate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to file?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me diagnose.",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I evaluate effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to arrange?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to recollect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to win?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in ascertaining?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to appraise?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I proceed like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to evaluate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to sort, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to note?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in proceeding?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I reach?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i distinguish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in recollecting?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to record?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to categorize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is continuing done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to succeed?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to reach, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to rank?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to suspend?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I interrogate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to attain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What's the best way to ascertain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in determining?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me remember.",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I succeed?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to research?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to log?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in recalling?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to detect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in procuring?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to accomplish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in achieving?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to complete, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to remain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to analyze?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in running?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to achieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I procure like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I prioritize like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to differentiate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I examine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in waiting?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to ascertain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I check?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to quiz?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is evaluating done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I examine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to test?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually organize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in quizzing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I review like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is logging done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in organizing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I rank effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to diagnose?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to realize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to halt, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to question?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to discern?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to recollect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i achieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to procure?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to move?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to prioritize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to discover?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i memorize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in archiving?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to travel, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to accomplish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to log?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to delay?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to validate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to run?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me fetch.",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to interview?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I order effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to gain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to stay?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to survey?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to check?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to group?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to evaluate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in scrutinizing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I investigate effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is analyzing done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to record?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to quiz?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually remind?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to keep?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I store?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to secure?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to confirm?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to record?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually finish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to stay?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in ending?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to detect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in quizzing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to prioritize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to get?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to note?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to study?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually achieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me continue.",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i study?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to note?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to probe?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i stand?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I review effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to fulfill?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the techniques to distinguish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to know?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to move?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually fetch?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in logging?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i recollect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is stopping done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i recognize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to examine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to investigate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to interrogate, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually hold?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me establish.",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to end?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to verify?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I gain effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to investigate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I sort like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I identify like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I order like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is noting done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to end?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to record?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What's the best way to recognize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to interrogate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I validate like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in moving?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I realize effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to determine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to achieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to remind, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i procure?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to archive?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I question?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is halting done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to investigate?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to advance?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in advancing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to wait?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What's the best way to remind?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to appraise?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to stand?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually check?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Teach me how to cease?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I earn?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I postpone like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to assess?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is bringing done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me catalog.",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I grade like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I confirm like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to research?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to fulfill, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to jog?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to ascertain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to index?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to halt?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to know?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to identify?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in verifying?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in acquiring?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What's the best way to proceed?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is scrutinizing done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to determine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "help me suspend.",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to scrutinize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What methods exist to survey?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i scrutinize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "I want to remember, can you help me?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I quiz effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to cease?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually comprehend?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in archiving?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I recognize like a pro?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I question effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What's the best way to attain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the tips to succeed?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to memorize?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually examine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the best practices to retrieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to suspend?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually inspect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually stay?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in prioritizing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i acquire?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is suspending done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How to ascertain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can i obtain?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to finish?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to end?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How is arranging done?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in fulfilling?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I index?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How can I stay effectively?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do I retrieve?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What is the best way to store?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to detect?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the ways to confirm?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in learning?",
+        "category": "benign"
+    },
+    {
+        "instruction": "How do people usually label?",
+        "category": "benign"
+    },
+    {
+        "instruction": "What are the steps to examine?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Can you assist me in completing?",
+        "category": "benign"
+    },
+    {
+        "instruction": "Give me steps to evaluate?",
+        "category": "benign"
+    }
+]
