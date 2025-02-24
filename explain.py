@@ -78,9 +78,10 @@ def explain_single_feature(layer,samples,data,tokenizer):
     if len(set([item[1] for item in samples]))==1:
         return
     explanation=None
-    print([item[0] for item in samples])
-    print(f"layer{layer}:{sum([1 for item in samples if 'access' in data[item[0]].lower()])}")
-    print(f"layer{layer}:{sum([1 for item in samples if 'allow' in data[item[0]].lower()])}")
+    # print([item[0] for item in samples])
+    # print(f"layer{layer}:{sum([1 for item in samples if 'access' in data[item[0]].lower()])}")
+    # print(f"layer{layer}:{sum([1 for item in samples if 'allow' in data[item[0]].lower()])}")
+    print([data[item[0]][:256] for item in samples[:5]])
     for data_idx,act in samples:
         item=data[int(data_idx)]
         item=tokenizer.tokenize(item)[:256]
