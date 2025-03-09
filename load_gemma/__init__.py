@@ -19,7 +19,7 @@ def load_gemma_autoencoders(model, ae_layers: list[int],average_l0s: Dict[int,in
             f"google/gemma-scope-2b-pt-{type}", path, device
         )
         
-        sae.half()
+        sae.bfloat16()
         def _forward(sae, x):
             encoded = sae.encode(x)
             return encoded

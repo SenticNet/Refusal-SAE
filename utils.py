@@ -1,33 +1,33 @@
-import os
-import openai
-from dotenv import load_dotenv
-load_dotenv()
-openai.api_key=os.getenv('OPENAI_KEY')
+# import os
+# import openai
+# from dotenv import load_dotenv
+# load_dotenv()
+# openai.api_key=os.getenv('OPENAI_KEY')
 import torch
 from functools import partial
 # from scaling_feature_discovery.scaling_feature_discovery.gemmascope1 import JumpReluSae
 from typing import Any
-from simple_parsing import Serializable
+# from simple_parsing import Serializable
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 from dataclasses import dataclass, field
 import einops
 # call openai skeleton
-import openai
-from collections import defaultdict
+# import openai
+# from collections import defaultdict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-def call_openai(prompt):
-    # openai.api_key = api_key
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=500
-    )
-    return response["choices"][0]["message"]["content"]
+# def call_openai(prompt):
+#     # openai.api_key = api_key
+#     response = openai.ChatCompletion.create(
+#         model="gpt-4o-mini",
+#         messages=[
+#             {"role": "system", "content": "You are a helpful assistant."},
+#             {"role": "user", "content": prompt}
+#         ],
+#         temperature=0.7,
+#         max_tokens=500
+#     )
+#     return response["choices"][0]["message"]["content"]
 
 def get_gradients(model, prompt, direction, downstream_layer=15):
     gradients = {layer: None for layer in range(downstream_layer)}
