@@ -1,5 +1,6 @@
+
 from functools import partial
-from .gemmascope import JumpReLUSAE
+from .gemmascope import JumpReLUSAE,JumpReLUSAE_Base
 from typing import List, Dict
 import torch
 from .wrapper import AutoencoderLatents
@@ -13,13 +14,52 @@ def load_gemma_autoencoders(model, ae_layers: list[int],average_l0s: Dict[int,in
 
     for layer in ae_layers:
     
-        path = f"layer_{layer}/width_{size}/average_l0_{average_l0s[layer]}"
-        # sae = JumpReLUSAE.from_pretrained(path,type,"cuda")
+        # path = f"layer_{layer}/width_{size}/average_l0_{average_l0s[layer]}"
+        # sae = JumpReLUSAE.from_pretrained(
+        #     f"google/gemma-scope-2b-pt-{type}", path, device
+        # )
+        
+        path=f"model.layers.{layer}"
         sae = JumpReLUSAE.from_pretrained(
-            f"google/gemma-scope-2b-pt-{type}", path, device
+            f"nirmalendu01/gemma-2b-it-jumprelu-saes-enc-dec", path, device
         )
         
-        sae.bfloat16()
+        sae.half()
+        def _forward(sae, x):
+            encoded = sae.encode(x)
+            return encoded
+        if type == "res":
+            submodule = model.model.layers[layer]
+        elif type == "mlp":
+            submodule = model.model.layers[layer].post_feedforward_layernorm
+        submodule.ae = AutoencoderLatents(
+            sae, partial(_forward, sae), width=sae.W_enc.shape[1]
+        )
+
+        submodules[submodule.path] = submodule
+
+    with model.edit(" ") as edited:
+        for _, submodule in submodules.items():
+            if type == "res":
+                acts = submodule.output[0]
+            else:
+                acts = submodule.output
+            submodule.ae(acts, hook=True)
+
+    return submodules, edited
+
+
+def load_gemma_autoencoders_base(model, ae_layers: list[int],average_l0s: Dict[int,int],size:str,type:str,device="cuda"):
+    submodules = {}
+
+    for layer in ae_layers:
+    
+        path = f"layer_{layer}/width_{size}/average_l0_{average_l0s[layer]}"
+        sae = JumpReLUSAE_Base.from_pretrained(
+            f"google/gemma-scope-2b-pt-{type}", path, device
+        )
+
+        sae.half()
         def _forward(sae, x):
             encoded = sae.encode(x)
             return encoded
