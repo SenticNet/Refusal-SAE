@@ -9,19 +9,13 @@ DEVICE = "cuda:0"
 
 
 
-def load_gemma_autoencoders(model, ae_layers: list[int],average_l0s: Dict[int,int],size:str,type:str,device="cuda"):
+def load_gemma_autoencoders(model, ae_layers: list[int],average_l0s: Dict[int,int],size:str,type:str,device="cuda",train_encoder_only=False):
     submodules = {}
 
     for layer in ae_layers:
-    
-        # path = f"layer_{layer}/width_{size}/average_l0_{average_l0s[layer]}"
-        # sae = JumpReLUSAE.from_pretrained(
-        #     f"google/gemma-scope-2b-pt-{type}", path, device
-        # )
-        
         path=f"model.layers.{layer}"
         sae = JumpReLUSAE.from_pretrained(
-            f"nirmalendu01/gemma-2b-it-jumprelu-saes-enc-dec", path, device
+            "nirmalendu01/gemma-2b-it-jumprelu-saes-enc-dec" if not train_encoder_only else "nirmalendu01/gemma-2b-it-jumprelu-saes-encoderonly", path, device
         )
         
         sae.half()
