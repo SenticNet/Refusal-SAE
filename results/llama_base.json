@@ -1,0 +1,1 @@
+{"jailbreakbench": {"string": 0.77, "safe": 0.95}, "harmbench_test": {"string": 0.710691823899371, "harm": 0.11320754716981132}, "strongreject": {"string": 0.74, "safe": 0.94}}

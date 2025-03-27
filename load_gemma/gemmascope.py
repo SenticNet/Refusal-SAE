@@ -160,7 +160,7 @@ class JumpReLUSAE_Base(nn.Module):
     self.threshold = nn.Parameter(torch.zeros(d_sae))
     self.b_enc = nn.Parameter(torch.zeros(d_sae))
     self.b_dec = nn.Parameter(torch.zeros(d_model))
-
+    
   def encode(self, input_acts):
     pre_acts = input_acts @ self.W_enc + self.b_enc
     mask = (pre_acts > self.threshold)
@@ -188,6 +188,5 @@ class JumpReLUSAE_Base(nn.Module):
     pt_params = {k: torch.from_numpy(v) for k, v in params.items()}
     model = cls(params['W_enc'].shape[0], params['W_enc'].shape[1])
     model.load_state_dict(pt_params)
-    if device == "cuda":
-        model.cuda()
+    model.device = device
     return model

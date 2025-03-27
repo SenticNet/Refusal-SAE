@@ -6,7 +6,10 @@ import time
 
 def async_process(fn,inps,workers=10,msg=''):
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        out = list(tqdm(executor.map(fn,inps),total = len(inps),desc = msg))
+        if len(msg):
+            out = list(tqdm(executor.map(fn,inps),total = len(inps),desc = msg))
+        else:
+            out = list(executor.map(fn,inps))
     return out
 
 def openai_call(message,model='gpt-4o',max_new_tokens=100,temperature=0.,n=1):

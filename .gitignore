@@ -5,3 +5,5 @@ cuda_visible_devices.txt
 cache.pt
 feature_dict.pt
 gemma_res_neuropedia.pkl
+dataset
+circuit
