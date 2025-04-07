@@ -1,7 +1,7 @@
 from functools import partial
-from utils import *
+from utils.utils import *
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from openai_utils import *
+from utils.openai_utils import *
 from vllm import LLM, SamplingParams
 import numpy as np
 from tqdm import tqdm

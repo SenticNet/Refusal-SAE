@@ -3,8 +3,20 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from typing import NamedTuple
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download,list_repo_files
 from safetensors.torch import load_file
+
+def get_optimal_file(repo_id,layer,width):
+    directory_path = f"layer_{layer}/width_{width}"
+    files_with_l0s = [
+            (f, int(f.split("_")[-1].split("/")[0]))
+            for f in list_repo_files(repo_id, repo_type="model", revision="main")
+            if f.startswith(directory_path) and f.endswith("params.npz")
+        ]
+
+    optimal_file = min(files_with_l0s, key=lambda x: abs(x[1] - 100))[0]
+    optimal_file = optimal_file.split("/params.npz")[0]
+    return optimal_file
 
 BANDWIDTH = 0.1
 def rectangle_pt(x):

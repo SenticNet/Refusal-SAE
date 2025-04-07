@@ -6,7 +6,7 @@ import os
 from transformer_lens import utils, HookedTransformer
 import torch
 from load_gemma import get_optimal_file
-from load_gemma.gemmascope import JumpReLUSAE,JumpReLUSAE_Base
+from utils.gemmascope import JumpReLUSAE,JumpReLUSAE_Base
 from argparse import ArgumentParser
 from sae_lens import SAE
 import json

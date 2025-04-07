@@ -218,9 +218,6 @@ def clamp_to_circuit(act,hook,saes,circuit,flag = -1e6):
     clamped_x_hat = saes[hook.name].decode(f).to(act.device)
     return clamped_x_hat + res
 
-
-
-
 def get_steering_vec(harmful,harmless,model):
     harmful_inps = encode_fn([format_prompt(model.tokenizer,x) for x in harmful],model)
     harmless_inps = encode_fn([format_prompt(model.tokenizer,x) for x in harmless],model)
@@ -232,12 +229,6 @@ def get_steering_vec(harmful,harmless,model):
     del harmful_cache,harmless_cache
     torch.cuda.empty_cache()
     return steering_vec
-
-def get_topk_feat_diff(model,harmful,harmless,saes,topk=5):
-    harmful_acts = get_sae_feat_val(model,saes,harmful)
-    harmless_acts = get_sae_feat_val(model,saes,harmless)
-    return {k:torch.topk(harmful_acts[k][:,-1].mean(0) - harmless_acts[k][:,-1].mean(0),topk).indices for k in harmful_acts.keys()}
-
 
 
 def topk_feat_sim(saes,steer_vec,topk=5):# diff from above, rather than looking at act value, we look at similarity with steering vec
@@ -367,20 +358,6 @@ def get_random_circuit(circuit,feat_size):
         random_circuit[l] = torch.randint(0,feat_size,(len(feats),)).tolist()
     return random_circuit
 
-
-def minimize_misc(x,y,ids_list,x_list,y_list): 
-    """
-    given x,y which are both B,D tensor and ids which stores the mapping of the value in x to layer, feat
-    push the value in the corresponding ids_list to x_list and y to ylist
-    """
-    B,D = x.shape
-    for i in range(B):
-        for j in range(D):
-            l,f = ids_list[x[i,j]] # tuple
-            x_list[l][i][j].append(f) # f is the feat idx
-            y_list[i][j].append(y[i,j])
-    return x_list,y_list
-
 def remove_overlap_nested_dict(x,y):
     for k in y:
         for outer_key in y[k]:
@@ -406,35 +383,6 @@ def threshold_circuit(feats,attrs,threshold):
                 if k in valid_pos:
                     threshold_feats[i][j].append((l,f))
     return threshold_feats,np.mean(valid_nodes)
-
-def circuit_list_to_dict(circuit,num_layers,pad_pos=None):
-    """
-    assume circuit is a nested list (batch:samples:list of tuples (layer,feat)) , pad to offset seq_pos
-    Used to convert circuit in nested list form to dict form
-    """
-    circuit_dict = {l: defaultdict(lambda: defaultdict(list)) for l in range(num_layers)}
-    for sample_pos, sample_feats in enumerate(circuit):
-        max_pad_pos = max(pad_pos[sample_pos]) + 1 if len(pad_pos[sample_pos]) > 0 else 0
-        for seq_pos, seq_feats in enumerate(sample_feats):
-            for l,f in seq_feats:
-                circuit_dict[l][sample_pos][seq_pos+max_pad_pos].append(f) 
-    return circuit_dict
-
-def create_mask_from_circuit(circuit,circuit_vals,flag = -1e6):
-    """
-    Given a circuit in dict form, create a similar circuit but set pos where non included nodes are -1e6 (just a flag for hook) and included nodes to circuit_val
-    circuit is a double nested dict (layer:sample_pos:seq_pos:list of feats)
-    circuit_vals is a dict of layer:feat:val where val = [batch,seq,feat_dim]
-    output a similar circuit as circuit_vals but with the non-included nodes set to -1e6 and the included nodes set to circuit_vals
-    """
-    out_circuit = deepcopy(circuit_vals)
-    for l in circuit:
-        out_circuit[l] = torch.ones_like(out_circuit[l]) * flag
-        for i in circuit[l]:
-            for j in circuit[l][i]: # a list
-                for f in circuit[l][i][j]:
-                    out_circuit[l][i,j,f] = circuit_vals[l][i,j,f]
-    return out_circuit
 
 
 def patchscope(model,saes,feat):
@@ -500,21 +448,36 @@ def concat_batch_feat_dicts(dicts):
     concatenated = {k: torch.cat(v, dim=0) for k, v in concatenated.items()}
     return concatenated
 
-def circuit_tolist(circuit):
+def circuit_tolist(circuit,input_ids=None,remove_padding=False,ignore_bos=False):
     """
     For each sample and each sequence position, extract a list of (layer, feature_index)
     for all features where the value is 0 (i.e., important).
     convert into nested list: batch :seq:tuples (l,feat)
+    if input_ids is given and remove_padding is True, we find for each seq the pad positions and remove them, also applies to the circuit. This allows easy accessing of individual token features
     """
     layers = list(circuit.keys())
     B, S, F = next(iter(circuit.values())).shape
-    result = [[[] for _ in range(S)] for _ in range(B)]  # nested list: [B][S]
+    circuit_list = [[[] for _ in range(S)] for _ in range(B)]  # nested list: [B][S]
 
     for layer in layers:
         tensor = circuit[layer]  # shape: [B, S, F]
         important_pos = (tensor == 0).nonzero(as_tuple=False)  # shape: [N, 3]
 
         for b, s, f in important_pos:
-            result[b][s].append((layer, f.item()))
-
-    return result
+            circuit_list[b][s].append((layer, f.item()))
+    
+    if remove_padding and input_ids is not None:
+        new_circuit_list = []
+        new_input_ids = []
+        for b in range(B):
+            pad_positions = (input_ids[b] == 0).nonzero(as_tuple=True)[0].tolist()
+            max_pad_pos = max(pad_positions) + 1 if len(pad_positions) > 0 else 0
+            if ignore_bos:
+                max_pad_pos += 1
+            new_circuit_list.append(circuit_list[b][max_pad_pos:])
+            new_input_ids.append(input_ids[b][max_pad_pos:])
+        circuit_list = new_circuit_list
+        input_ids = new_input_ids
+        return circuit_list, input_ids
+    else:
+        return circuit_list
