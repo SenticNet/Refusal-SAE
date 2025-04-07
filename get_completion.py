@@ -90,7 +90,7 @@ def main():
     main_dir = 'completion'
     completion_path = {
         'base':'{main_dir}/{ds_name}/{model_name}_base.jsonl',
-        'sae':'{main_dir}/{ds_name}/{model_name}_sae_{K}.jsonl',
+        'sae':'{main_dir}/{ds_name}/{model_name}_sae_{K}_clamp{clamp_val}.jsonl',
         'vec':'{main_dir}/{ds_name}/{model_name}_vec.jsonl'
     }
     
@@ -116,12 +116,10 @@ def main():
     for ds_name,ds in tqdm(eval_datasets.items(),total = len(eval_datasets),desc = 'SAE Completion'):
         os.makedirs(f'{main_dir}/{ds_name}',exist_ok=True)
         for K in args.K:
-            if K == -1:
-                K == len(minimal_circuit)
+            if K == 0:
+                K = len(minimal_circuit)
             K_circuit = sort_back(minimal_circuit[:int(K)])
-            curr_path = completion_path['sae'].format(ds_name = ds_name,model_name = args.model_name,K = K,main_dir = main_dir)
-            if args.clamp_val != 0:
-                curr_path = curr_path.replace('.jsonl',f'_clamp{args.clamp_val}.jsonl')
+            curr_path = completion_path['sae'].format(ds_name = ds_name,model_name = args.model_name,K = K,main_dir = main_dir,clamp_val=args.clamp_val)
 
             if not os.path.exists(curr_path):
                 completion = eval_ds(model,ds,saes,feats = K_circuit,steering_fn = 'sae',bz = args.bz,clamp_value=args.clamp_val,**gen_kwargs)

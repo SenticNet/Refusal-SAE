@@ -56,6 +56,8 @@ def eval_ds(model,prompts,saes,steering_vec=None,feats=None,steering_fn = 'sae',
     model.reset_hooks()
     if steering_fn == 'vec':
         model.add_hook(resid_name_filter,partial(ablate_hook,vec = steering_vec))
+    elif steering_fn == 'vec_add':
+        model.add_hook(resid_name_filter,partial(steer_hook,vec = steering_vec))
     elif steering_fn == 'sae':
         if max_circuit is None:
             model.add_hook(resid_name_filter,partial(clamp_sae,saes = saes,circuit = feats,val=clamp_value,multiply = multiply))
@@ -152,24 +154,6 @@ def load_harmbench_classifier():
     classifier.llm_engine.tokenizer.truncation_side = "left"
     return classifier
 
-
-# def harmbench_judge(prompts,responses,classifier,tokenizer,bz = 8):
-#     harmful_acc = []
-#     harmful_prob = []
-#     yes_token_id = tokenizer.convert_tokens_to_ids('Yes')
-#     cls_prompt =[LLAMA2_CLS_PROMPT.format(behavior = p,generation = r) for p,r in zip(prompts,responses)]
-#     tokenized = tokenizer(cls_prompt,padding='longest',return_tensors='pt').to(classifier.device)
-#     for i in range(0,len(tokenized['input_ids']),bz):
-#         curr_tokenized = {k:v[i:i+bz] for k,v in tokenized.items()}
-#         with torch.no_grad():
-#             output = classifier.generate(**curr_tokenized,do_sample=False,max_new_tokens=1,output_scores=True,return_dict_in_generate=True)
-#         output_tokens = output.sequences[:,-1]
-#         output_str = tokenizer.batch_decode(output_tokens,skip_special_tokens=True)
-#         probs = output.scores[0].softmax(-1)[:,yes_token_id]
-#         harmful_acc.extend([int(x.lower().strip() == 'yes') for x in output_str])
-#         harmful_prob.extend(probs.tolist())
-#     return np.mean(harmful_acc),np.mean(harmful_prob)
-
 def harmbench_judge(prompts,responses,classifier):
     harmful_acc = []
     classifier_params = SamplingParams(temperature=0.0, max_tokens=1)
@@ -198,98 +182,3 @@ def eval_harmful_knowledge(model,prompts,saes=None,steering_vec=None,feats=None,
     is_harmful = ['harmful' in tok.lower() for tok in model.tokenizer.batch_decode(logits.argmax(-1))]
     model.reset_hooks()
     return np.mean(is_harmful),harmful_probs.mean().item()
-
-def minimize_circuit(model,saes,ds,circuit,greedy=True,approx = True,interpolate_steps=1,N=-1,bz=-1):
-    """
-    Greedy means each iteration we pick the best feature and add to a set and compare the next remaining feat effect with the set
-    Approx means we approximate the effect of each feature by using linear attribution
-    interpolate is IG, approximate gradient with steps
-    """
-    refusal_id = model.tokenizer.encode('I',add_special_tokens=False)[0]
-    flatten_circuit = []
-    for l,feats in circuit.items():
-        for feat in feats:
-            flatten_circuit.append((l,feat))
-    C_K = []
-    if N == -1:
-        N = len(flatten_circuit) if greedy else 1
-    else:
-        N = min(N,len(flatten_circuit)) # choose at most the number of features
-    if approx:
-        torch.set_grad_enabled(True) # allow grads
-    attr_vals = []
-
-    for iter in tqdm(range(N),total = N): # iter over N times to retrieve N best features
-        model.reset_hooks() 
-        current_cir_wo_K = list(set(flatten_circuit) - set(C_K))
-        if approx:
-            if bz == -1:
-                bz = len(ds)
-            for batch_i in range(0,len(ds),bz):
-                ds_batch = ds[batch_i:batch_i+bz]   
-                encoded_inps = encode_fn([format_prompt(model.tokenizer,x) for x in ds_batch],model)
-
-                with torch.no_grad(): # get the current activation
-                    feat_cache = {}
-                    model.add_hook(resid_name_filter,partial(clamp_sae,saes = saes,circuit = sort_back(C_K)))
-                    model.add_hook(resid_name_filter,partial(store_sae_feat,saes = saes,cache = feat_cache))
-                    _ = model(encoded_inps.input_ids,attention_mask = encoded_inps.attention_mask)
-
-                all_grads = defaultdict(list)
-                for step in range(interpolate_steps):
-                    grad_cache = {}
-                    model.reset_hooks()
-                    alpha = step/interpolate_steps
-                    model.add_hook(resid_name_filter,partial(sae_grad_hook,saes = saes,grad_cache = grad_cache,clamp_circuit = sort_back(C_K),alpha = 1- alpha))
-                    model.add_hook(resid_name_filter,sae_bwd_hook,'bwd')
-                    logits = model(encoded_inps.input_ids,attention_mask = encoded_inps.attention_mask)
-                    loss = -logits[:,-1,refusal_id].mean() # ablate causes logit to reduce
-                    logits.grad = None
-                    for k,v in grad_cache.items():
-                        v.grad = None
-                    loss.backward()
-                    with torch.no_grad():
-                        for l,acts in grad_cache.items():
-                            all_grads[l].append(acts.grad.detach())
-                    del grad_cache
-                    torch.cuda.empty_cache()
-                all_grads = {k:torch.stack(v).mean(0) for k,v in all_grads.items()} # mean over steps
-                curr_best = defaultdict(list)
-                for l,f in current_cir_wo_K:
-                    curr_attr = (-feat_cache[l] * all_grads[l])[:,:,f].sum().item()
-                    curr_best[(l,f.item())].append(curr_attr)
-                del all_grads
-            curr_best = {k:np.sum(v) for k,v in curr_best.items()}
-
-            if greedy:
-                best_t = max(curr_best,key = curr_best.get)
-                C_K.append(best_t)
-                attr_vals.append(curr_best[best_t])
-            else: # sort them
-                curr_best = sorted(curr_best.items(),key = lambda x: x[1],reverse = True)
-                C_K = [x[0] for x in curr_best]
-                attr_vals = [x[1] for x in curr_best]
-        else:
-            curr_best = []
-            for l,f in tqdm(current_cir_wo_K,total = len(current_cir_wo_K)):
-                C_K_V = C_K + [(l,f)]
-                C_K_circuit = current_cir_wo_K
-                C_K_V_circuit = list(set(flatten_circuit) - set(C_K_V))
-                _,F_K = eval_ds(model,ds,saes,feats = sort_back(C_K_circuit))
-                _,F_K_V = eval_ds(model,ds,saes,feats = sort_back(C_K_V_circuit)) # shld be higher if impt
-                curr_best.append((l,f,F_K_V - F_K))
-            if greedy:
-                best_feat = max(curr_best,key = lambda x:x[2])
-                C_K.append((best_feat[0],best_feat[1]))
-                attr_vals.append(best_feat[2])
-            else:
-                curr_best = sorted(curr_best,key = lambda x: x[2],reverse = True)
-                C_K = [(l,f) for l,f,_ in curr_best]
-                attr_vals = [attr for _,_,attr in curr_best]
-        
-    model.reset_hooks()
-    torch.set_grad_enabled(False)
-    model.zero_grad()
-    gc.collect()
-    torch.cuda.empty_cache()
-    return C_K,attr_vals
