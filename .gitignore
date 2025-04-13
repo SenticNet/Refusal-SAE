@@ -9,3 +9,5 @@ dataset
 circuit
 openai_key.txt
 feature-circuits
+cache
+llm-attacks

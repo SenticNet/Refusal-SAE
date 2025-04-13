@@ -2,17 +2,25 @@ from collections import defaultdict
 import numpy as np
 import torch
 from tqdm import tqdm
+from functools import partial
+from collections import Counter
 from utils.utils import *
 
-def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1):
+def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1,ind_jailbreak = False):
     """
     Use linear attribution to get the features for each token
+    if ind_jailbreak, we instead get a jailbreak logit for each example.
     """
     refusal_id = torch.tensor(model.tokenizer.encode('I',add_special_tokens=False)[0]).to(model.cfg.device)
-    jailbreak_id = torch.tensor(model.tokenizer.encode('Here',add_special_tokens=False)[0]).to(model.cfg.device)
+    if not ind_jailbreak:
+        jailbreak_id = torch.tensor(model.tokenizer.encode('Here',add_special_tokens=False)[0]).to(model.cfg.device)
+
     def metric_fn(x):
-        jailbreak_logit = x[:,-1,jailbreak_id]
         refusal_logit = x[:,-1,refusal_id]
+        if not ind_jailbreak:
+            jailbreak_logit = x[:,-1,jailbreak_id]
+        else:
+            jailbreak_logit = x[torch.arange(x.shape[0]),-1,jailbreak_id]
         return jailbreak_logit - refusal_logit
     
     encoded_inps = encode_fn([format_prompt(model.tokenizer,x) for x in ds],model)
@@ -23,8 +31,10 @@ def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1):
         # Get patch = steered states
         model.reset_hooks()
         model.add_hook(resid_name_filter,partial(ablate_hook,vec =steering_vec,saes = saes,cache = patch_cache,store = True,store_error=True))
-        _ = model(encoded_inps.input_ids,attention_mask = encoded_inps.attention_mask)
+        patched_logits = model(encoded_inps.input_ids,attention_mask = encoded_inps.attention_mask)
         model.reset_hooks()
+        if ind_jailbreak:
+            jailbreak_id = patched_logits[:,-1].argmax(-1) # use 1st token of the steered as jailbreak (customize for each sample rather than using "Here" for all)
 
         # get clean
         model.add_hook(resid_name_filter,partial(store_sae_feat,saes = saes,cache = clean_cache))
@@ -41,7 +51,7 @@ def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1):
         model.add_hook(resid_name_filter,partial(sae_grad_patch_IG,grad_cache = grad_cache,saes=saes,patch_cache = patch_cache,alpha=alpha))
         model.add_hook(resid_name_filter,sae_bwd_hook,'bwd')
         logits = model(encoded_inps.input_ids,attention_mask = encoded_inps.attention_mask)
-        loss = metric_fn(logits).mean()
+        loss = metric_fn(logits).sum()
         logits.grad = None
         for v in grad_cache.values():
             v.grad = None
@@ -67,9 +77,11 @@ def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1):
     clear_mem()
     return attrs,all_grads,delta
 
-def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device = None):
+def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device = None,ind_topk=False):
     """
     Create a mask for the circuit, using threshold, if topk_feat is given, further threshold using tha
+    Threshold or topk - threshold select all nodes > threshold
+    topk_feat is selecting only features that exist in this topk_feat per layer (2nd stage filtering.)
     """
     circuit_mask = {}
     num_feats = 0
@@ -79,10 +91,18 @@ def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device
             feats = feats.to(device)
         mask = feats.clone() > threshold
         if topk_feat is not None:
-            topk_mask = torch.zeros(feats.shape[-1], dtype=torch.bool)
-            topk_mask[topk_feat[l]] = True
-            mask_indices = (~topk_mask).nonzero(as_tuple=True)[0]
-            mask[:, :, mask_indices] = False
+            if ind_topk: # topk_feat is per sample
+                per_row_mask = torch.zeros_like(mask, dtype=torch.bool,device = feats.device)
+                for i in range(bz):
+                    per_row_mask[i,:,topk_feat[l][i]] = True
+                mask *= per_row_mask
+                del per_row_mask
+            else: # topk_feat is fixed for all samples
+                topk_mask = torch.zeros(feats.shape[-1], dtype=torch.bool,device = feats.device)
+                topk_mask[topk_feat[l]] = True
+                mask_indices = (~topk_mask).nonzero(as_tuple=True)[0]
+                mask[:, :, mask_indices] = False
+                del topk_mask
         mask = ~mask # invert so those false are now 1, those true are 0
         mask = mask.to(feats.dtype)
         num_feats += (mask == 0).sum().item()
@@ -91,7 +111,22 @@ def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device
         circuit_mask[l] = mask.to('cpu') # switch back to cpu to save ram
     return circuit_mask,num_feats/bz
 
-def topk_match_mask(circuit, attribution_vals,clamp_val = 0):
+def threshold_mask(circuit,threshold,device='cuda'): # simple thresholding (pos = 1 instead of 0 in create_circuit_mask)
+    circuit_mask = {}
+    num_feats = 0
+    bz = circuit[0].shape[0]
+    for l, feats in circuit.items():
+        if device is not None:
+            feats = feats.to(device)
+        mask = feats.clone() > threshold
+        circuit_mask[l] = mask.to('cpu')
+        num_feats += mask.sum().item()
+    return circuit_mask,num_feats/bz
+
+
+
+
+def topk_match_mask(circuit, attribution_vals,clamp_val = 0,device='cuda'):
     """
     Used to replicate the feature circuit A from another circuit of attribution values
     For each sample (row), look at how many feat values that are highlighted = clamp_val = K, then take corresponding K in the corresponding
@@ -100,6 +135,7 @@ def topk_match_mask(circuit, attribution_vals,clamp_val = 0):
     """
     out_circuit = {}
     for l, feats in circuit.items():
+        feats = feats.to(device)
         attr = attribution_vals[l].to(feats.device)
         B, D, F = feats.shape
         flat_feats = feats.view(B, -1)
@@ -117,9 +153,50 @@ def topk_match_mask(circuit, attribution_vals,clamp_val = 0):
             _, topk_indices = torch.topk(flat_attr[i], k=k, largest=True)
             out_mask[i].index_fill_(0, topk_indices, clamp_val)  # in-place efficient
 
-        out_circuit[l] = out_mask.view(B, D, F)
+        out_circuit[l] = out_mask.view(B, D, F).to('cpu')  # switch back to cpu to save ram
 
     return out_circuit
+
+
+def topk_feature(model,ds,attribution,threshold,topk_feat,topk):
+    """
+    1) Filter the attribution values using topk features set -> sparse feature node circuit
+    2) For each sample, keep a count of the number of features higlighted across tokens and pick top K
+    Ignore bos and pad tokens (bos have high activations and is biased)
+    Outputs the topk features and inputs without pad/bos
+    """
+    circuit,n_feats = create_circuit_mask(attribution,threshold,topk_feat = topk_feat,device = model.cfg.device)
+    if n_feats < topk:
+        print (f'Warning: Not enough features {n_feats} to select from {topk}')
+    encoded_inputs = encode_fn([format_prompt(model.tokenizer,x) for x in ds],model).input_ids 
+    circuit_list,non_padded_encoded_inputs = circuit_tolist(circuit,encoded_inputs,True,True)
+    feat_set_dict = defaultdict(list) # each layer is a nested ragged list, where each outer list is for samples and inner is features for that layer.
+    all_sample_feats = [] # each  list contains list of tuples (l,f) for each sample
+
+    all_feat_token_activated = []
+    for i,sample_circuit in enumerate(circuit_list):
+        common_feats = []
+        feat_token_activated = defaultdict(list) # keep track for each sample, which tokens are activated for which feature.
+        for j,seq_feats in enumerate(sample_circuit):
+            common_feats.extend(seq_feats)
+        
+        counter_feat = Counter(common_feats)
+        topk_feats = counter_feat.most_common(topk)
+        topk_feats = [feat[0] for feat in topk_feats]
+        for j,seq_feats in enumerate(sample_circuit): # for each seq, see if the feat is in the topk_feats
+            for fe in seq_feats:
+                if fe in set(topk_feats):
+                    feat_token_activated[fe].append(j) # for each feature, keep track of which tokens are activated
+        all_feat_token_activated.append(feat_token_activated)
+        all_sample_feats.append(topk_feats)
+        sample_feat_set = defaultdict(list)
+        for layer,feat in topk_feats:
+            sample_feat_set[layer].append(feat)
+        for layer in range(model.cfg.n_layers): # even when there is no feats, we add to every layer to keep the index
+            feats = sample_feat_set.get(layer,[])
+            feat_set_dict[layer].append(feats) 
+    return {'feat_dict':feat_set_dict,'feat_list':all_sample_feats,'input':non_padded_encoded_inputs,'feat_token':all_feat_token_activated}
+
 
 def clamp_circuit_to_value(circuit,true_val = 0,clamp_val = -1):
     clamped_circuit = {}
@@ -127,7 +204,6 @@ def clamp_circuit_to_value(circuit,true_val = 0,clamp_val = -1):
         clamped_circuit[l] = v.clone()
         clamped_circuit[l][v == true_val] = clamp_val
     return clamped_circuit
-
 
 def nested_defaultdict(depth):
     if depth == 1:

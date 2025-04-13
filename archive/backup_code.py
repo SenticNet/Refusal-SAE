@@ -273,3 +273,27 @@ def minimize_circuit_sample(model,saes,ds,circuit,N=-1,patch=False,steering_vec=
         return sorted_C_K,sorted_C_V
     else:
         return sorted_C_K,sorted_C_V,out_grad
+    
+
+def clamp_feat_ind(f,circuit,clamp_val=0.,multiply=False):
+    for b in circuit:
+        for s in circuit[b]:
+            pos = circuit[b][s]
+            if len(pos):
+                if not multiply:
+                    f[b,s,pos] = clamp_val
+                else:
+                    f[b,s,pos] *= clamp_val
+    return f
+
+def clamp_individual(act,hook,saes,circuit,clamp_val = 0,multiply = False):
+    if act.shape[1] > 1: # clamping at sample + token level, only input
+        layer = retrieve_layer_fn(hook.name)
+        f = saes[hook.name].encode(act.to(saes[hook.name].device))
+        x_hat = saes[hook.name].decode(f).to(act.device)
+        res = act - x_hat
+        f = clamp_feat_ind(f,circuit[layer],clamp_val,multiply)
+        clamped_x_hat = saes[hook.name].decode(f).to(act.device)
+        return clamped_x_hat + res
+    else:
+        return act

@@ -14,46 +14,23 @@ def async_process(fn,inps,workers=10,msg=''):
 
 def openai_call(message,model='gpt-4o',max_new_tokens=100,temperature=0.,n=1):
     client = OpenAI()
-    max_calls = 1
-    num_calls = 0
-    while True:
-        if num_calls > max_calls:
-            return None,None
-        try:
-            if 'instruct' in model.lower():
-                prompt = ''
-                for m in message:
-                    prompt += m['content']
-                    if m['role'] == 'assistant':
-                        prompt += '\n\n'
-                response = client.completions.create(
-                model=model,
-                prompt=prompt,
-                temperature=temperature,
-                max_tokens=max_new_tokens,
-                n = n,
-                )
-                cost = cal_cost(model,response.usage.prompt_tokens,response.usage.completion_tokens)
-                if n > 1:
-                    return [r.text for r in response.choices],cost
-                else:
-                    return response.choices[0].text,cost
-            else:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=message,
-                    temperature=temperature,
-                    max_tokens=max_new_tokens,
-                    n=n,
-                    )
-                cost = cal_cost(model,response.usage.prompt_tokens,response.usage.completion_tokens)
-                if n > 1:
-                    return [r.message.content for r in response.choices],cost
-                else:
-                    return response.choices[0].message.content,cost
-        except Exception as e:
-            num_calls += 1
-            time.sleep(num_calls**2)
+    if not isinstance(message,list):
+        message = [{'role':'user','content':message}]
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=message,
+            temperature=temperature,
+            max_tokens=max_new_tokens,
+            n=n,
+            )
+        cost = cal_cost(model,response.usage.prompt_tokens,response.usage.completion_tokens)
+        if n > 1:
+            return [r.message.content for r in response.choices],cost
+        else:
+            return response.choices[0].message.content,cost
+    except Exception as e:
+        print ('Error:',e)
 
 def cal_cost(model_name,in_tokens,out_tokens):
     if model_name in ['gpt-4','GPT4']:
