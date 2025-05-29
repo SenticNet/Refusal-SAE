@@ -60,7 +60,7 @@ def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1,ind_jail
             for l,acts in grad_cache.items():
                 all_grads[l].append(acts.grad.detach())
         del grad_cache
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
     all_grads = {k:torch.stack(v).mean(0) for k,v in all_grads.items()}
     attrs = {}
     delta = {}
@@ -74,54 +74,59 @@ def linear_attribution(model,saes,ds,steering_vec,interpolate_steps = 1,ind_jail
     del patch_cache
     del clean_cache
     torch.set_grad_enabled(False)
-    clear_mem()
+    # clear_mem()
     return attrs,all_grads,delta
 
-def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device = None,ind_topk=False):
+def create_circuit_mask(circuit,threshold,topk_feat=None,clamp_val = None,device = None,bz=-1):
     """
     Create a mask for the circuit, using threshold, if topk_feat is given, further threshold using tha
     Threshold or topk - threshold select all nodes > threshold
     topk_feat is selecting only features that exist in this topk_feat per layer (2nd stage filtering.)
+    bz if circuit sample size is too big, this will need too much RAM 
     """
     circuit_mask = {}
     num_feats = 0
     bz = circuit[0].shape[0]
+    if bz != -1:
+        to_iter = range(0,len(circuit[0]),bz)
+    else:
+        to_iter = [0]
+        bz = len(circuit[0])
     for l, feats in circuit.items():
-        if device is not None:
-            feats = feats.to(device)
-        mask = feats.clone() > threshold
-        if topk_feat is not None:
-            if ind_topk: # topk_feat is per sample
-                per_row_mask = torch.zeros_like(mask, dtype=torch.bool,device = feats.device)
-                for i in range(bz):
-                    per_row_mask[i,:,topk_feat[l][i]] = True
-                mask *= per_row_mask
-                del per_row_mask
-            else: # topk_feat is fixed for all samples
+        batched_mask = []
+        for batch_id in to_iter:
+            feats = feats[batch_id:batch_id+bz]
+            if device is not None:
+                feats = feats.to(device)
+            mask = feats.clone() > threshold
+            if topk_feat is not None:
                 topk_mask = torch.zeros(feats.shape[-1], dtype=torch.bool,device = feats.device)
                 topk_mask[topk_feat[l]] = True
                 mask_indices = (~topk_mask).nonzero(as_tuple=True)[0]
                 mask[:, :, mask_indices] = False
                 del topk_mask
-        mask = ~mask # invert so those false are now 1, those true are 0
-        mask = mask.to(feats.dtype)
-        num_feats += (mask == 0).sum().item()
-        if clamp_val is not None:
-            mask = torch.where(mask == 0, clamp_val, mask)
-        circuit_mask[l] = mask.to('cpu') # switch back to cpu to save ram
+            mask = ~mask # invert so those false are now 1, those true are 0
+            mask = mask.to(feats.dtype)
+            # num_feats += (mask == 0).sum().item()
+            if clamp_val is not None:
+                mask = torch.where(mask == 0, clamp_val, mask)
+            batched_mask.append(mask)
+        circuit_mask[l] = torch.cat(batched_mask).to('cpu') if len(batched_mask) > 1 else batched_mask[0].to('cpu')
     return circuit_mask,num_feats/bz
 
-def threshold_mask(circuit,threshold,device='cuda'): # simple thresholding (pos = 1 instead of 0 in create_circuit_mask)
+def threshold_mask(circuit,threshold,device='cuda',clamp_val=0): # simple thresholding (pos = 1 instead of 0 in create_circuit_mask)
     circuit_mask = {}
     num_feats = 0
     bz = circuit[0].shape[0]
     for l, feats in circuit.items():
         if device is not None:
             feats = feats.to(device)
-        mask = feats.clone() > threshold
+        mask = (feats < threshold).to(torch.int)
+        num_feats += (mask == 0).sum().item()
+        if clamp_val != 0:
+            mask = torch.where(mask == 0, torch.tensor(clamp_val, device=mask.device, dtype=mask.dtype), mask)
         circuit_mask[l] = mask.to('cpu')
-        num_feats += mask.sum().item()
-    return circuit_mask,num_feats/bz
+    return circuit_mask,int(round(num_feats/(bz*feats.shape[1]))) # divide by seq as well
 
 
 
@@ -158,18 +163,18 @@ def topk_match_mask(circuit, attribution_vals,clamp_val = 0,device='cuda'):
     return out_circuit
 
 
-def topk_feature(model,ds,attribution,threshold,topk_feat,topk):
+def topk_feature(model,ds,attribution,threshold,topk_feat,topk,bz=-1):
     """
     1) Filter the attribution values using topk features set -> sparse feature node circuit
     2) For each sample, keep a count of the number of features higlighted across tokens and pick top K
     Ignore bos and pad tokens (bos have high activations and is biased)
     Outputs the topk features and inputs without pad/bos
     """
-    circuit,n_feats = create_circuit_mask(attribution,threshold,topk_feat = topk_feat,device = model.cfg.device)
-    if n_feats < topk:
-        print (f'Warning: Not enough features {n_feats} to select from {topk}')
+    circuit,n_feats = create_circuit_mask(attribution,threshold,topk_feat = topk_feat,device = model.cfg.device,bz=bz)
+    # if n_feats < topk:
+    #     print (f'Warning: Not enough features {n_feats} to select from {topk}')
     encoded_inputs = encode_fn([format_prompt(model.tokenizer,x) for x in ds],model).input_ids 
-    circuit_list,non_padded_encoded_inputs = circuit_tolist(circuit,encoded_inputs,True,True)
+    circuit_list,non_padded_encoded_inputs = circuit_tolist(circuit,model,encoded_inputs,True,True)
     feat_set_dict = defaultdict(list) # each layer is a nested ragged list, where each outer list is for samples and inner is features for that layer.
     all_sample_feats = [] # each  list contains list of tuples (l,f) for each sample
 
@@ -195,7 +200,63 @@ def topk_feature(model,ds,attribution,threshold,topk_feat,topk):
         for layer in range(model.cfg.n_layers): # even when there is no feats, we add to every layer to keep the index
             feats = sample_feat_set.get(layer,[])
             feat_set_dict[layer].append(feats) 
-    return {'feat_dict':feat_set_dict,'feat_list':all_sample_feats,'input':non_padded_encoded_inputs,'feat_token':all_feat_token_activated}
+    # get a global feature set as well (topk common across all samples)
+    global_feats = []
+    for seq_feats in all_sample_feats:
+        global_feats.extend(seq_feats)
+    global_counter = Counter(global_feats)
+    global_topk_feats = global_counter.most_common(topk)
+    global_topk_feats = [feat[0] for feat in global_topk_feats]
+
+    return {'feat_dict':feat_set_dict,'feat_list':all_sample_feats,'input':non_padded_encoded_inputs,'feat_token':all_feat_token_activated,'global_feat_list': global_topk_feats}
+
+
+def find_features(model,ds,attribution,topk_feats,topk,take_pos_onwards=-1):
+    encoded_inputs = encode_fn([format_prompt(model.tokenizer,x) for x in ds],model).input_ids.detach().cpu() 
+    bos_token_pos = (encoded_inputs == model.tokenizer.bos_token_id).int().argmax(dim=1) + num_bos_token[model.model_name] # we want to ignore the bos token since it often have high activations
+    non_padded_encoded_inputs = []
+    B, T = encoded_inputs.shape
+    if take_pos_onwards <0:  # take all tokens after bos
+        seq_mask = (torch.arange(T).unsqueeze(0).expand(B, -1) >= bos_token_pos.unsqueeze(1)).unsqueeze(-1)
+    else:
+        seq_mask = (torch.arange(T).unsqueeze(0).expand(B, -1) >= take_pos_onwards.unsqueeze(1)).unsqueeze(-1)
+    
+    topk_harm_feats = []
+    topk_attr = []
+    for l,feats in topk_feats.items():
+        topk_harm_feats.extend([(l,f) for f in feats.tolist()])
+        layer_attr = attribution[l][:, :, feats.detach().cpu()] 
+        # apply mask (broadcast over feature dim) , average attr over seq positions ignoring padding and bos
+        masked_sum = (layer_attr * seq_mask).sum(dim=1)   # (B, K)
+        counts     = seq_mask.sum(dim=1).clamp(min=1)     # (B, 1) avoid /0
+        mean_attr  = masked_sum / counts                # (B, K) 
+        topk_attr.append(mean_attr)
+
+
+    topk_attr = torch.cat(topk_attr,dim=1) # (B, size of topk_feats)
+    feat_set_dict = defaultdict(list)
+    all_sample_feats = []
+    for i in range(B):
+        sample_layer_feats = defaultdict(list)
+        top_indices = topk_attr[i].topk(topk).indices.tolist()
+        selected_feats = [topk_harm_feats[j] for j in top_indices]
+        all_sample_feats.append(selected_feats)
+        for l,f in selected_feats:
+            sample_layer_feats[l].append(f)
+        for layer in range(model.cfg.n_layers): # even when there is no feats, we add to every layer to keep the index
+            feats = sample_layer_feats.get(layer,[])
+            feat_set_dict[layer].append(feats)
+
+        ## get non-padded inputs:
+        non_padded_encoded_inputs.append(encoded_inputs[i][bos_token_pos[i]:])
+    
+    global_topk_attr = topk_attr.mean(0).topk(topk).indices.tolist()
+    global_topk_feats = [topk_harm_feats[j] for j in global_topk_attr]
+    return {'feat_dict':feat_set_dict,'feat_list':all_sample_feats,'input':non_padded_encoded_inputs,'global_feat_list': global_topk_feats}
+
+
+
+
 
 
 def clamp_circuit_to_value(circuit,true_val = 0,clamp_val = -1):
@@ -209,6 +270,44 @@ def nested_defaultdict(depth):
     if depth == 1:
         return defaultdict()
     return defaultdict(lambda: nested_defaultdict(depth - 1))
+
+
+## Baseline (Get topk features according to cosine sim with a refusal direction)
+def topk_feat_from_cosine(vec,saes,topk):
+    feat_dict = defaultdict(list)
+    norm_vec = F.normalize(vec,dim=-1)
+    all_cosine_sims = []
+    for layer in range(len(saes)):
+        norm_feature_vecs = F.normalize(saes[f'blocks.{layer}.hook_resid_post'.format(l=layer)].W_dec,dim = -1).to(norm_vec.device)
+        cosine_sim = einsum(norm_feature_vecs, norm_vec , 'n d, d -> n')
+        all_cosine_sims.append(cosine_sim)
+    all_cosine_sims = torch.stack(all_cosine_sims,dim = 0)
+    topk_layers,topk_feats = topk2d(all_cosine_sims,topk)
+    for l,f in zip(topk_layers,topk_feats):
+        feat_dict[l.item()].append(f.item())
+    return feat_dict
+
+### Baseline (get topk features according to feature activation val diff between harmful/harmless)
+def topk_feat_from_act_diff(harmful,harmless,model,saes,topk,avg_seq = 'max'):
+    feat_dict = defaultdict(list)
+    harmful_acts = get_sae_feat_val(model,saes,harmful,detach=True) # {layer: [batch,seq,feat]}
+    harmless_acts = get_sae_feat_val(model,saes,harmless,detach=True)
+    if avg_seq == 'max':
+        harmful_acts = torch.stack([v.max(1).values.mean(0) for k,v in sorted(harmful_acts.items(),key= lambda x: x[0])]) # take max across seq 
+        harmless_acts = torch.stack([v.max(1).values.mean(0) for k,v in sorted(harmless_acts.items(),key= lambda x: x[0])])
+    elif avg_seq == 'last': # else take the last token
+        harmful_acts = torch.stack([v[:,-1].mean(0) for k,v in sorted(harmful_acts.items(),key= lambda x: x[0])]) 
+        harmless_acts = torch.stack([v[:,-1].mean(0) for k,v in sorted(harmless_acts.items(),key= lambda x: x[0])])
+    else: # mean across seq
+        harmful_acts = torch.stack([v.mean((0,1)) for k,v in sorted(harmful_acts.items(),key= lambda x: x[0])]) 
+        harmless_acts = torch.stack([v.mean((0,1)) for k,v in sorted(harmless_acts.items(),key= lambda x: x[0])])
+    act_diff = harmful_acts - harmless_acts
+    topk_layers,topk_feats = topk2d(act_diff,topk)
+    for l,f in zip(topk_layers,topk_feats):
+        feat_dict[l.item()].append(f.item())
+    return feat_dict
+
+
 
 
 def get_edges(model,saes,ds,circuit,grads,deltas,prior_layers = 1,clamped_val = 0.):

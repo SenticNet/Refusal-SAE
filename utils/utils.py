@@ -10,6 +10,10 @@ import numpy as np
 
 retrieve_layer_fn = lambda x: int(x.split('.')[1])
 resid_name_filter = lambda x: 'resid_post' in x
+num_bos_token = {
+    'gemma-2b': 1,
+    'llama': 26
+}
 
 def clear_mem():
     torch.cuda.empty_cache()
@@ -59,10 +63,12 @@ def sae_grad_patch_IG(act,hook,saes,grad_cache,patch_cache,alpha):
     Hook to directly replace the feat of the encoder.
     patch_cache contains the f and res of the patched states
     """
-    f = saes[hook.name].encode(act)
+    if saes.get(hook.name,None) is None:
+        return act
+    f = saes[hook.name].encode(act.to(saes[hook.name].W_dec.device))
     clean_x_hat = saes[hook.name].decode(f).to(act.device)
     clean_res = act- clean_x_hat
-    f = (1-alpha) * f + (alpha * patch_cache['feat'][retrieve_layer_fn(hook.name)])
+    f = (1-alpha) * f + (alpha * patch_cache['feat'][retrieve_layer_fn(hook.name)].to(f.device))
     x_hat = saes[hook.name].decode(f).to(act.device)
     track_grad(f)
     grad_cache[retrieve_layer_fn(hook.name)] = f
@@ -81,7 +87,7 @@ def clamp_sae(act,hook,saes,circuit,pos = 'all',val = 0,multiply=False,only_inpu
     ind means features for each sample
     retain_feats contains the set of features, we want to retain the original val. (prevent upstream feature changes from affecting it.)
     """
-    if only_input and act.shape[1] == 1:
+    if (only_input and act.shape[1] == 1) or saes.get(hook.name,None) is None: # only input space or if sae layer dont exists
         return act
     f = saes[hook.name].encode(act.to(saes[hook.name].device))
     x_hat = saes[hook.name].decode(f).to(act.device)
@@ -91,7 +97,11 @@ def clamp_sae(act,hook,saes,circuit,pos = 'all',val = 0,multiply=False,only_inpu
         if pos == 'all':
             token_pos = slice(None)
         else:
-            token_pos = pos
+            if len(pos) > 1:
+                token_pos,feats = torch.meshgrid(pos,torch.tensor(feats), indexing='ij')
+            else:
+                token_pos = pos
+
         if not ind:
             if multiply:
                 f[:,token_pos,feats] *= val
@@ -103,18 +113,41 @@ def clamp_sae(act,hook,saes,circuit,pos = 'all',val = 0,multiply=False,only_inpu
                     f[i,token_pos,sample_feat] *= val
                 else:
                     f[i,token_pos,sample_feat] = val
-    if len(retain_feats) and act.shape[1] >1: # only input space.
+    if len(retain_feats): # only input space.
         if len(retain_feats['idx'].get(retrieve_layer_fn(hook.name),[])):
-            print ()
             retain_idx = retain_feats['idx'][retrieve_layer_fn(hook.name)]
-            retain_vals = retain_feats['val'][retrieve_layer_fn(hook.name)]
-            f[:,:,retain_idx] = retain_vals[:,:,retain_idx].to(f.device)
+            if act.shape[1] >1: # input space
+                retain_vals = retain_feats['val'][retrieve_layer_fn(hook.name)]
+                if not isinstance(retain_idx[0],list):
+                    f[:,:,retain_idx] = retain_vals[:,:,retain_idx].to(f.device)
+                else: # the features to retain is individual samples
+                    for i,sample_feat in enumerate(retain_idx):
+                        f[i,:,sample_feat] = retain_vals[i,:,sample_feat].to(f.device)
+            else:
+                if retain_feats.get('mean_idx',None) is not None:
+                    retain_vals = retain_feats['mean_val'][retrieve_layer_fn(hook.name)] # avg over seq
+                    if not isinstance(retain_idx[0],list):
+                        f[:,:,retain_idx] = retain_vals[:,retain_idx].unsqueeze(1).to(f.device)
+                    else:
+                        for i,sample_feat in enumerate(retain_idx):
+                            f[i,:,sample_feat] = retain_vals[i,sample_feat].to(f.device)
+    clamped_x_hat = saes[hook.name].decode(f).to(act.device)
+    return clamped_x_hat + res
+
+def clamp_feat_by_pos(act,hook,saes,circuit,circuit_pos,val = 0): ## Only for single samples!
+    f = saes[hook.name].encode(act.to(saes[hook.name].device))
+    x_hat = saes[hook.name].decode(f).to(act.device)
+    res = act - x_hat
+    feats = circuit.get(retrieve_layer_fn(hook.name),[]) # feat indx
+    feat_pos = circuit_pos[retrieve_layer_fn(hook.name)] # pos for each indx to clamp
+    for feat,pos in zip(feats,feat_pos):
+        f[:,pos:,feat] *= val
     clamped_x_hat = saes[hook.name].decode(f).to(act.device)
     return clamped_x_hat + res
 
 
 def clamp_sae_mask(act,hook,saes,circuit):
-    if act.shape[1] == 1: # only input space.
+    if act.shape[1] == 1 or saes.get(hook.name,None) is None: # only input space.
         return act
     f = saes[hook.name].encode(act.to(saes[hook.name].device))
     x_hat = saes[hook.name].decode(f).to(act.device)
@@ -126,10 +159,12 @@ def clamp_sae_mask(act,hook,saes,circuit):
     return clamped_x_hat + res
 
     
-def clamp_sae_to_val(act,hook,saes,circuit,circuit_val,retain_feats = False):
+def clamp_sae_to_val(act,hook,saes,circuit,circuit_val,retain_feats = {}):
     """
     clamp only feats in the circuit to the circuit_val, should have same shape
     """
+    if saes.get(hook.name,None) is None:
+        return act
     f = saes[hook.name].encode(act.to(saes[hook.name].device))
     x_hat = saes[hook.name].decode(f).to(act.device)
     res = act - x_hat
@@ -149,6 +184,8 @@ def store_sae_feat(act,hook,saes,cache,store_error=False,detach=False):
     """
     Hook to store the sae features
     """
+    if saes.get(hook.name,None) is None:
+        return act
     f = saes[hook.name].encode(act.to(saes[hook.name].device))
     if store_error:
         xhat = saes[hook.name].decode(f).to(act.device)
@@ -174,7 +211,7 @@ def steer_hook(act,hook,vec):
     """
     return act + vec
 
-def ablate_hook(act,hook,vec,saes=None,cache= {},store=False,store_error=False,only_input = False):
+def ablate_hook(act,hook,vec,saes=None,cache= {},store=False,store_error=False,only_input = False): ## Check
     """
     Hook to ablate the direction
     """
@@ -183,29 +220,16 @@ def ablate_hook(act,hook,vec,saes=None,cache= {},store=False,store_error=False,o
     norm_dir = F.normalize(vec,dim = -1)
     proj = einsum(act, norm_dir.unsqueeze(-1), 'b c d, d s-> b c s')
     ablated_act =  act - (proj * norm_dir)
-    if store:
-        f = saes[hook.name].encode(ablated_act)
-        xhat = saes[hook.name].decode(f)
+    if store and saes.get(hook.name,None) is not None:
+        f = saes[hook.name].encode(ablated_act.to(saes[hook.name].device))
+        xhat = saes[hook.name].decode(f).to(act.device)
         res = act - xhat
         if store_error:
             cache['feat'][retrieve_layer_fn(hook.name)] = f
             cache['res'][retrieve_layer_fn(hook.name)] = res # store the error also for IG if using
         else:
-            cache[retrieve_layer_fn(hook.name)] = f
+            cache[retrieve_layer_fn(hook.name)] = f.to(act.device)
     return ablated_act
-
-def ablate_and_store_hook(act,hook,vec,saes,pre_cache,post_cache):
-    """
-    Store feat act of model pre and post vector ablation
-    """
-    pre_cache[retrieve_layer_fn(hook.name)] = saes[hook.name].encode(act)
-    norm_dir = F.normalize(vec,dim = -1)
-    proj = einsum(act, norm_dir.unsqueeze(-1), 'b c d, d s-> b c s')
-    ablated =  act - (proj * norm_dir)
-    f = saes[hook.name].encode(ablated)
-    post_cache[retrieve_layer_fn(hook.name)] = f
-    return ablated
-
 
 def clamp_to_circuit(act,hook,saes,circuit,circuit_val):
     """
@@ -225,17 +249,23 @@ def clamp_to_circuit(act,hook,saes,circuit,circuit_val):
     return clamped_x_hat + res
     
 
-def get_steering_vec(harmful,harmless,model):
+def get_steering_vec(harmful,harmless,model,return_separate_vectors = False): # if return_separate_vectors, return harmful_vec and harmless vec as well.
     harmful_inps = encode_fn([format_prompt(model.tokenizer,x) for x in harmful],model)
     harmless_inps = encode_fn([format_prompt(model.tokenizer,x) for x in harmless],model)
 
     _,harmful_cache = model.run_with_cache(harmful_inps.input_ids,attention_mask = harmful_inps.attention_mask,names_filter = resid_name_filter)
     _,harmless_cache = model.run_with_cache(harmless_inps.input_ids,attention_mask = harmless_inps.attention_mask,names_filter = resid_name_filter)
 
-    steering_vec = {retrieve_layer_fn(k):harmful_cache[k][:,-1].mean(0) - harmless_cache[k][:,-1].mean(0) for k in harmful_cache.keys()}
+    harmful_acts = {retrieve_layer_fn(k):harmful_cache[k][:,-1] for k in harmful_cache.keys()}
+    harmless_acts = {retrieve_layer_fn(k):harmless_cache[k][:,-1] for k in harmless_cache.keys()}
+
+    steering_vec = {k: harmful_acts[k].mean(0)- harmless_acts[k].mean(0) for k in harmful_acts.keys()}
     del harmful_cache,harmless_cache
     torch.cuda.empty_cache()
-    return steering_vec
+    if not return_separate_vectors:
+        return steering_vec
+    else:
+        return steering_vec, (harmful_acts,harmless_acts)
 
 
 def topk_feat_sim(saes,steer_vec,topk=5,return_val = False):# diff from above, rather than looking at act value, we look at similarity with steering vec
@@ -282,9 +312,38 @@ def get_feat_rank_vals(model,saes,ds,feats,avg_over_dim = (0,1),select_token = N
     model.reset_hooks()
     return feat_ranks,feat_vals
 
-def get_sae_feat_val(model,saes,ds,detach=True): # just get feat val
+def get_feat_val(model,saes,input_ids,feats,ops = 'max',ignore_bos=True,clamp_fn = None): # clamp_fn to clamp upstream feats
+    if not isinstance(input_ids,torch.Tensor):
+        input_ids = encode_fn(format_prompt(model.tokenizer,input_ids),model).input_ids
+    feat_cache = {}
+    model.reset_hooks()
+    if clamp_fn is not None:
+        model.add_hook(resid_name_filter,clamp_fn)
+    model.add_hook(resid_name_filter,partial(store_sae_feat,saes = saes,cache = feat_cache,detach=True))
+    _ = model(input_ids)
+    feat_vals = []
+    for l,f in feats:
+        if ignore_bos:
+            bos_n = num_bos_token[model.model_name] + 1 if 'llama' in model.model_name else num_bos_token[model.model_name]
+            val = feat_cache[l][0,bos_n:,f] # ignore the bos (when taking max,mean it can get skewed due to large act from bos)
+        else:
+            val = feat_cache[l][0,:,f]
+
+        if ops == 'max':
+            val = feat_cache[l][0,:,f].max(dim=0).values.item()
+        elif ops == 'mean':
+            val = feat_cache[l][0,:,f].mean(dim=0).item()
+        feat_vals.append(val)
+    if not isinstance(feat_vals[0],torch.Tensor):
+        feat_vals = torch.tensor(feat_vals)
+    else:
+        feat_vals = torch.stack(feat_vals,dim = 1)
+    model.reset_hooks()
+    return feat_vals
+
+def get_sae_feat_val(model,saes,ds,detach=True,is_chat=True): # just get feat val
     layer_acts = {}
-    prompts = encode_fn([format_prompt(model.tokenizer,x) for x in ds],model)
+    prompts = encode_fn([format_prompt(model.tokenizer,x) if is_chat else x for x in ds],model)
     model.reset_hooks()
     model.add_hook(resid_name_filter,partial(store_sae_feat,saes = saes,cache = layer_acts,detach=detach))
     _ = model(prompts.input_ids,attention_mask = prompts.attention_mask)
@@ -467,7 +526,7 @@ def concat_batch_feat_dicts(dicts):
     concatenated = {k: torch.cat(v, dim=0) for k, v in concatenated.items()}
     return concatenated
 
-def circuit_tolist(circuit,input_ids=None,remove_padding=False,ignore_bos=False):
+def circuit_tolist(circuit,model,input_ids=None,remove_padding=False,ignore_bos=False):
     """
     For each sample and each sequence position, extract a list of (layer, feature_index)
     for all features where the value is 0 (i.e., important).
@@ -489,15 +548,19 @@ def circuit_tolist(circuit,input_ids=None,remove_padding=False,ignore_bos=False)
         new_circuit_list = []
         new_input_ids = []
         for b in range(B):
-            pad_positions = (input_ids[b] == 0).nonzero(as_tuple=True)[0].tolist()
-            max_pad_pos = max(pad_positions) + 1 if len(pad_positions) > 0 else 0
+            pad_pos = (input_ids[b] == model.tokenizer.bos_token_id).nonzero(as_tuple=True)[0][-1].item() 
             if ignore_bos:
-                max_pad_pos += 1
-            new_circuit_list.append(circuit_list[b][max_pad_pos:])
-            new_input_ids.append(input_ids[b][max_pad_pos:])
+                pad_pos += num_bos_token[model.model_name]
+            new_circuit_list.append(circuit_list[b][pad_pos:])
+            new_input_ids.append(input_ids[b][pad_pos:])
         circuit_list = new_circuit_list
         input_ids = new_input_ids
         return circuit_list, input_ids
     else:
         return circuit_list
 
+def topk2d(tensor,topk):
+    topk_feat_ind = torch.topk(tensor.flatten(),topk).indices
+    topk_layers = topk_feat_ind // tensor.shape[1]
+    topk_feats = topk_feat_ind % tensor.shape[1]
+    return topk_layers,topk_feats
