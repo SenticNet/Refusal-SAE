@@ -28,6 +28,9 @@ def main():
     parser.add_argument("--bz", type=int, default=64, help="batch size for normal inference")
     parser.add_argument("--la_bz", type=int, default=3, help="batch size for doing LA-IG , need to set much smaller")
     parser.add_argument("--print_all", action = 'store_true', help="print all the features found for each analysis, will be alot")
+    parser.add_argument("--use_vllm", type=bool, default = False, help="use vllm for harmbench")
+    parser.add_argument("--eval_jb", type=bool, default = False, help="eval jailbreak scores")
+
     args = parser.parse_args()
 
     seed = 42
@@ -35,9 +38,16 @@ def main():
     np.random.seed(seed)
     torch.set_grad_enabled(False) # rmb set to true for grads
 
+    feature_cache = f'cache/cat_harm_{args.model}_feats.pkl'
+
     # Load the model
     torch_dtype = torch.bfloat16
-    device = "cuda:1" # set to 1 for main device, because 0 is used for the harmbench classifier
+    device = "cuda:0" # set to 0 for main device, because 1 is used for the harmbench classifier
+    if not os.path.exists(feature_cache):
+        if len(torch.cuda.device_count()) < 2:
+            print ('Make sure you have 2 GPUs, else will run into OOM!')
+        else:
+            device = "cuda:1" # set to 1 for main device, because 0 is used for the harmbench classifier
     model_name = args.model
     model = load_tl_model(model_name,device = device, torch_dtype = torch_dtype)
     num_sae_layer = model.cfg.n_layers
@@ -49,8 +59,8 @@ def main():
         interp_ds = get_explanation_df(model_name,model.cfg.n_layers)
 
     # Load hb classifier
-    hb_model = load_harmbench_classifier() # this is loaded on "cuda:1"
-
+    if args.eval_jb:
+        hb_model = load_harmbench_classifier(use_vllm=args.use_vllm) 
     ## load harmless/CATQA ds - use the harmless to get V^*
     _, harmless_train, _, harmless_val = load_refusal_datasets()
     is_base_harmless,_ = batch_single(harmless_train,model,eval_refusal=True,avg_samples=False)
@@ -73,29 +83,35 @@ def main():
     best_layer = model_best_layer[model_name] # best layer to get V^*
 
     ### Do Linear attribution-IG
-    cat_attr = {},
-    for cat in tqdm(cat_harm_ds.keys(),total = len(cat_harm_ds)):
-        all_attr= []
-        for i in range(0,len(cat_harm_ds[cat]),args.la_bz):
-            attr,_,_ = linear_attribution(model,saes,cat_harm_ds[cat][i:i+args.la_bz],steering_vec = steering_vec[cat][best_layer],interpolate_steps=10,ind_jailbreak=True)
-            all_attr.append(attr)
-        
-        all_attr = pad_sequence_3d(*all_attr) # left pad them all to same seq length 
-        cat_attr[cat] = all_attr
+    
+    if not os.path.exists(feature_cache):
+        cat_attr = {}
+        for cat in tqdm(cat_harm_ds.keys(),total = len(cat_harm_ds)):
+            all_attr= []
+            for i in range(0,len(cat_harm_ds[cat]),args.la_bz):
+                attr,_,_ = linear_attribution(model,saes,cat_harm_ds[cat][i:i+args.la_bz],steering_vec = steering_vec[cat][best_layer],interpolate_steps=10,ind_jailbreak=True)
+                all_attr.append(attr)
+            
+            all_attr = pad_sequence_3d(*all_attr) # left pad them all to same seq length 
+            cat_attr[cat] = all_attr
 
-    ###############################################
-    ####### Transfer experiment, section 4.2 ######
-    ###############################################
+        ###############################################
+        ####### Transfer experiment, section 4.2 ######
+        ###############################################
 
-    all_harm_feats = []
-    cat_harm_feats = {}
-    for cat in cat_attr.keys():
-        topk_feats = topk_feat_sim(saes,steering_vec[cat][best_layer],topk_feat_layer)
-        global_ds_feats = find_features(model,cat_harm_ds[cat],cat_attr[cat],topk_feats,topk=topk_common)['global_feat_list'] # global F^* for each cat
-        cat_harm_feats[cat] = global_ds_feats
-        all_harm_feats.append(global_ds_feats) 
+        all_harm_feats = []
+        cat_harm_feats = {}
+        for cat in cat_attr.keys():
+            topk_feats = topk_feat_sim(saes,steering_vec[cat][best_layer],topk_feat_layer)
+            global_ds_feats = find_features(model,cat_harm_ds[cat],cat_attr[cat],topk_feats,topk=topk_common)['global_feat_list'] # global F^* for each cat
+            cat_harm_feats[cat] = global_ds_feats
+            all_harm_feats.append(global_ds_feats) 
 
-    all_harm_feats = set(all_harm_feats[0]).intersection(*map(set,all_harm_feats[1:])) # common feats
+        all_harm_feats = set(all_harm_feats[0]).intersection(*map(set,all_harm_feats[1:])) # common feats
+    else:
+        feature_dict = pickle.load(open(feature_cache,'rb'))
+        all_harm_feats = feature_dict['common']
+        cat_harm_feats = feature_dict['specific']
     if args.print_all:
         print ('Common Features across all categories:')
         for (l,f) in all_harm_feats:
@@ -123,6 +139,7 @@ def main():
     """
     ## cache it 
     cache_path = f'cache/{"gemma" if "gemma" in model_name else "llama"}_cat_harm_trf.pkl'
+    response_path = f'cache/{"gemma" if "gemma" in model_name else "llama"}_cat_harm_responses.pkl'
 
     if not os.path.exists(cache_path):
         experiment_1_scores = defaultdict(dict)
@@ -131,7 +148,7 @@ def main():
             common_feat_dict[l].append(f)
 
         all_specific_feats = {} # store the specific features for each category so we can use them later
-
+        all_responses = defaultdict(dict) # cache the responses
         for cat,ds in tqdm(cat_harm_ds.items(),total = len(cat_harm_ds),desc = 'Jailbreak between similar vs dissimilar feat'):
 
             data_feat_vals = get_sae_feat_val(model,saes,ds) # get the feat values of the dataset to retain
@@ -154,16 +171,20 @@ def main():
 
             ## Specific
             specific_gen = batch_generate(ds,model,args.bz,saes = saes,steering_fn = 'custom',custom_fn =specific_fn)
-            experiment_1_scores[cat]['specific'] = harmbench_judge(ds,specific_gen,hb_model)
+            all_responses[cat]['specific'] = specific_gen # cache the responses
+            experiment_1_scores[cat]['specific'] = harmbench_judge(ds,specific_gen,hb_model,bz = args.bz) if args.eval_jb else -1
 
             common_gen = batch_generate(ds,model,args.bz,saes = saes,steering_fn = 'custom',custom_fn =common_fn)
-            experiment_1_scores[cat]['common'] = harmbench_judge(ds,common_gen,hb_model)
+            all_responses[cat]['common'] = common_gen # cache the responses
+            experiment_1_scores[cat]['common'] = harmbench_judge(ds,common_gen,hb_model,bz = args.bz) if args.eval_jb else -1
             
             # # Own (all feats within the target category)
             all_gen = batch_generate(ds,model,args.bz,saes = saes,steering_fn = 'custom',custom_fn =all_fn)
-            experiment_1_scores[cat]['all'] = harmbench_judge(ds,all_gen,hb_model) # use as normalization
+            all_responses[cat]['all'] = all_gen # cache the responses
+            experiment_1_scores[cat]['all'] = harmbench_judge(ds,all_gen,hb_model,bz = args.bz) if args.eval_jb else -1
 
-            print (f'Cat: {cat}, Specific/Common: {experiment_1_scores[cat]["specific"]:.2f}/{experiment_1_scores[cat]["common"]:.2f}, All: {experiment_1_scores[cat]["all"]:.2f}')
+            if args.eval_jb:
+                print (f'Cat: {cat}, Specific/Common: {experiment_1_scores[cat]["specific"]:.2f}/{experiment_1_scores[cat]["common"]:.2f}, All: {experiment_1_scores[cat]["all"]:.2f}')
 
         all_cat_scores = defaultdict(dict)
         for cat in experiment_1_scores.keys():
@@ -187,7 +208,8 @@ def main():
 
                 ## Specific
                 specific_gen = batch_generate(ds,model,args.bz,saes = saes,steering_fn = 'custom',custom_fn =specific_fn)
-                experiment_2_scores[cat][other_cat]['specific'] = harmbench_judge(ds,specific_gen,hb_model)
+                all_responses[cat][other_cat] = specific_gen # cache the responses
+                experiment_2_scores[cat][other_cat]['specific'] = harmbench_judge(ds,specific_gen,hb_model,bz = args.bz) if args.eval_jb else -1
 
 
         for cat in experiment_2_scores.keys():
@@ -202,6 +224,9 @@ def main():
 
         with open(cache_path,'wb') as f:
             pickle.dump(recursive_to_dict(all_cat_scores),f)
+
+        with open(response_path,'wb') as f:
+            pickle.dump(recursive_to_dict(all_responses),f)
     else:
         with open(cache_path,'rb') as f:
             all_cat_scores = pickle.load(f)
@@ -212,7 +237,7 @@ def main():
     ## Plot ###
     ###########
 
-    save_path = 'figures/cat_harm_trf.png' # change here
+    save_path = 'images/cat_harm.png' # change here
     os.makedirs(os.path.dirname(save_path),exist_ok=True)
 
     cat_group_mapping = {
@@ -255,10 +280,8 @@ def main():
     ax.legend(loc='upper center', frameon=False, fontsize=12, ncol=3)
     fig.subplots_adjust(left=0.13, right=0.98, top=0.88, bottom=0.15)
 
-    if save_path:
-        plt.savefig(save_path,dpi=300)
-    else:
-        plt.show()
+    plt.savefig(save_path,dpi=300)
+
 
 
 if __name__ == '__main__':

@@ -1,0 +1,13 @@
+torch==2.5.1
+numpy==1.26.4
+einops==0.8.1
+matplotlib==3.10.0
+pandas
+seaborn==0.13.2
+langdetect==1.0.9
+transformer_lens==2.13.0
+sae_lens==5.5.2
+transformers==4.46.2
+openai==1.82.0
+vllm==0.7.2
+huggingface_hub==0.30.2

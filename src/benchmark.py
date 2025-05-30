@@ -27,8 +27,10 @@ model_clamp_val = {'gemma-2b': -3,
 def main():
     parser = ArgumentParser()
     parser.add_argument("--model", type=str, default="gemma-2b", help="Base model name")
-    parser.add_argument("--bz", type=int, default=64, help="batch size for normal inference")
+    parser.add_argument("--bz", type=int, default=32, help="batch size for normal inference")
     parser.add_argument("--la_bz", type=int, default=3, help="batch size for doing LA-IG , need to set much smaller")
+    parser.add_argument("--use_vllm", type=bool, default = False, help="use vllm for harmbench")
+    parser.add_argument("--eval_jb", type=bool, default = False, help="eval jailbreak scores")
     args = parser.parse_args()
 
     seed = 42
@@ -36,9 +38,16 @@ def main():
     np.random.seed(seed)
     torch.set_grad_enabled(False) # rmb set to true for grads
 
+    feature_cache = f'cache/benchmark_{args.model}_feats.pkl'
+
     # Load the model
     torch_dtype = torch.bfloat16
-    device = "cuda:1" # set to 1 for main device, because 0 is used for the harmbench classifier
+    device = "cuda:0" # set to 0 for main device, because 1 is used for the harmbench classifier
+    if not os.path.exists(feature_cache):
+        if len(torch.cuda.device_count()) < 2:
+            print ('Make sure you have 2 GPUs, else will run into OOM!')
+        else:
+            device = "cuda:1" # set to 1 for main device, because 0 is used for the harmbench classifier
     model_name = args.model
     model = load_tl_model(model_name,device = device, torch_dtype = torch_dtype)
     num_sae_layer = model.cfg.n_layers
@@ -51,8 +60,8 @@ def main():
 
 
     # Load hb classifier
-    hb_model = load_harmbench_classifier() # this is loaded on "cuda:1"
-
+    if args.eval_jb:
+        hb_model = load_harmbench_classifier(use_vllm= args.use_vllm)
 
     N_test = 100 # number of samples to test on
     harmful_train, harmless_train, _, harmless_val = load_refusal_datasets() 
@@ -80,7 +89,7 @@ def main():
         for harm_name,ds in tqdm(harm_ds.items(),total = len(harm_ds)):
             base_resp = batch_generate(ds,model,bz = args.bz)
             base_resps[harm_name] = base_resp
-            base_jb = harmbench_judge(ds,base_resp,hb_model)
+            base_jb = harmbench_judge(ds,base_resp,hb_model,bz = args.bz) if args.eval_jb else -1
             base_refusal = np.mean([substring_matching_judge_fn(x) for x in base_resp])
             print (f'Base refusal on {harm_name} jb: {base_jb:.2f}, refusal: {base_refusal:.2f}')
             base_harm_safety[harm_name] = base_jb
@@ -107,7 +116,7 @@ def main():
         for k,ds in harm_ds.items():
             steer_resp = batch_generate(ds,model,bz = args.bz,steering_fn = 'vec',steering_vec=steering_vec[k][best_layer])
             steer_resps[k] = steer_resp
-            steer_harm_jb[k] = harmbench_judge(ds,steer_resp,hb_model)
+            steer_harm_jb[k] = harmbench_judge(ds,steer_resp,hb_model,bz = args.bz) if args.eval_jb else -1
             steer_harm_refusal[k] = np.mean([substring_matching_judge_fn(x) for x in steer_resp])
             print (f'Steering vec on {k} jb: {steer_harm_jb[k]:.2f}, refusal: {steer_harm_refusal[k]:.2f}')
 
@@ -121,18 +130,25 @@ def main():
             steer_resps = data['steer_resps']
 
     ## Do LA-IG
-    harm_attr =  {}
-    for harm_name,ds in tqdm(harm_ds.items(),total = len(harm_ds)):
-        all_attr = []
-        for i in range(0,len(ds),args.la_bz):
-            attr,_,_ = linear_attribution(model,saes,ds[i:i+args.la_bz],steering_vec = steering_vec[harm_name][best_layer],interpolate_steps=10,ind_jailbreak=True)
-            all_attr.append(attr)
-        harm_attr[harm_name] = pad_sequence_3d(*all_attr)
+    if not os.path.exists(feature_cache):
+        harm_attr =  {}
+        for harm_name,ds in tqdm(harm_ds.items(),total = len(harm_ds)):
+            all_attr = []
+            for i in range(0,len(ds),args.la_bz):
+                attr,_,_ = linear_attribution(model,saes,ds[i:i+args.la_bz],steering_vec = steering_vec[harm_name][best_layer],interpolate_steps=10,ind_jailbreak=True)
+                all_attr.append(attr)
+            harm_attr[harm_name] = pad_sequence_3d(*all_attr)
 
 
     ## Get the feature sets for the baselines
-    baseline_feats = defaultdict(dict)
-    global_feat_dict = defaultdict(dict) # only for LA-IG and ours
+    if os.path.exists(feature_cache):
+        with open(feature_cache, 'rb') as f:
+            feature_data = pickle.load(f)
+            baseline_feats = feature_data['local']
+            global_feat_dict = feature_data['global']
+    else:
+        baseline_feats = defaultdict(dict)
+        global_feat_dict = defaultdict(dict) # only for LA-IG and ours
 
     for harm_name,ds in tqdm(harm_ds.items(),total = len(harm_ds)):
         # 1) Baseline 1 (topk feature with direction using cosine similarity)
@@ -143,39 +159,40 @@ def main():
         act_feats = topk_feat_from_act_diff(ds,harmless_train,model,saes,topk,avg_seq='max')
         baseline_feats['act'][harm_name] = act_feats
     
-    for harm_name,attr in harm_attr.items():
-        ## baseline 3 (LA-IG)
-        la_feats = defaultdict(list)
-        avg_attr = torch.stack([v.mean(1) for k,v in sorted(attr.items(),key= lambda x: x[0])]).permute(1, 0, 2) # [bz layer feat] 
-        for sample_idx in range(len(avg_attr)):
-            sample_feats = defaultdict(list)
-            topk_layers,topk_feats = topk2d(avg_attr[sample_idx],topk)
-            for l,f in zip(topk_layers,topk_feats):
-                sample_feats[l.item()].append(f.item())
-            for l,feats in sample_feats.items():
-                la_feats[l].append(feats) # is gonna be a list of lists of len dataset
+    if not os.path.exists(feature_cache):
+        for harm_name,attr in harm_attr.items():
+            ## baseline 3 (LA-IG)
+            la_feats = defaultdict(list)
+            avg_attr = torch.stack([v.mean(1) for k,v in sorted(attr.items(),key= lambda x: x[0])]).permute(1, 0, 2) # [bz layer feat] 
+            for sample_idx in range(len(avg_attr)):
+                sample_feats = defaultdict(list)
+                topk_layers,topk_feats = topk2d(avg_attr[sample_idx],topk)
+                for l,f in zip(topk_layers,topk_feats):
+                    sample_feats[l.item()].append(f.item())
+                for l,feats in sample_feats.items():
+                    la_feats[l].append(feats) # is gonna be a list of lists of len dataset
 
-        global_attr = avg_attr.mean(0) # [layer,feat]
-        topk_layers,topk_feats = topk2d(global_attr,topk)
+            global_attr = avg_attr.mean(0) # [layer,feat]
+            topk_layers,topk_feats = topk2d(global_attr,topk)
+                
+            global_la_f =  [(l,f) for l,f in zip(topk_layers.tolist(),topk_feats.tolist())]
+            global_la_feat_dict = defaultdict(list)
+            for l,f in global_la_f:
+                global_la_feat_dict[l].append(f)
+
+            baseline_feats['la'][harm_name] = la_feats
+            global_feat_dict['la'][harm_name] = global_la_feat_dict
             
-        global_la_f =  [(l,f) for l,f in zip(topk_layers.tolist(),topk_feats.tolist())]
-        global_la_feat_dict = defaultdict(list)
-        for l,f in global_la_f:
-            global_la_feat_dict[l].append(f)
+            # Our approach
+            topk_feats_dict = topk_feat_sim(saes,steering_vec[harm_name][best_layer],topk_feat_layer)
+            feature_set_stuff = find_features(model,harm_ds[harm_name],attr,topk_feats_dict,topk=topk)
+            global_ours_feats = feature_set_stuff['global_feat_list']
+            global_ours_feat_dict = defaultdict(list)
+            for l,f in global_ours_feats:
+                global_ours_feat_dict[l].append(f)
 
-        baseline_feats['la'][harm_name] = la_feats
-        global_feat_dict['la'][harm_name] = global_la_feat_dict
-        
-        # Our approach
-        topk_feats_dict = topk_feat_sim(saes,steering_vec[harm_name][best_layer],topk_feat_layer)
-        feature_set_stuff = find_features(model,harm_ds[harm_name],attr,topk_feats_dict,topk=topk)
-        global_ours_feats = feature_set_stuff['global_feat_list']
-        global_ours_feat_dict = defaultdict(list)
-        for l,f in global_ours_feats:
-            global_ours_feat_dict[l].append(f)
-
-        baseline_feats['our'][harm_name] = feature_set_stuff['feat_dict']
-        global_feat_dict['our'][harm_name] = global_ours_feat_dict
+            baseline_feats['our'][harm_name] = feature_set_stuff['feat_dict']
+            global_feat_dict['our'][harm_name] = global_ours_feat_dict
 
     ## Get harmful dataset scores ##
     bm_path = os.path.join(bm_dir,f'{model_name}_baseline.pkl')
@@ -183,6 +200,7 @@ def main():
         fn_kwargs = {'val':clamp_val,'multiply':True}
         baseline_jb_scores = defaultdict(dict)
         baseline_refusal_scores = defaultdict(dict)
+        baseline_resps = defaultdict(dict)
         for harm_name,ds in tqdm(harm_ds.items(),total = len(harm_ds)): # over all harmful datasets
             for baseline_name in baseline_feats.keys(): # over all baselines
                 b_feats = baseline_feats[baseline_name][harm_name]
@@ -191,7 +209,8 @@ def main():
                 else:
                     fn_kwargs['ind']=True
                 baseline_resp = batch_generate(ds,model,bz = args.bz,saes=saes,steering_fn = 'sae',circuit = b_feats,fn_kwargs = fn_kwargs)
-                baseline_jb = harmbench_judge(ds,baseline_resp,hb_model)
+                baseline_resps[harm_name][baseline_name] = baseline_resp
+                baseline_jb = harmbench_judge(ds,baseline_resp,hb_model,bz = args.bz) if args.eval_jb else -1
                 baseline_jb_scores[harm_name][baseline_name] = baseline_jb
                 baseline_refusal_scores[harm_name][baseline_name]= np.mean([substring_matching_judge_fn(x) for x in baseline_resp])
                 print (f'Baseline ({baseline_name}) on {harm_name} JB: {baseline_jb_scores[harm_name][baseline_name]:.2f}')
@@ -199,7 +218,7 @@ def main():
         # save it 
         bm_path = os.path.join(bm_dir,f'{model_name}_baseline.pkl')
         with open(bm_path,'wb') as f:
-            pickle.dump({'jb':baseline_jb_scores,'refusal':baseline_refusal_scores},f)
+            pickle.dump({'jb':baseline_jb_scores,'refusal':baseline_refusal_scores,'baseline_resps':baseline_resps},f)
 
 
     ## CE loss on Alpaca and the Pile and refusal scores on the Alpaca
@@ -211,11 +230,11 @@ def main():
     pile_iterator = load_pile_iterator(pile_bz,model.tokenizer,device=model.cfg.device)
 
     ## Get on-policy rollouts
-    base_alpaca_outputs = batch_generate(alpaca_ds,model,bz = args.bz,saes=saes,steering_fn = None,max_new_tokens=256,use_tqdm=True)
+    base_alpaca_outputs = batch_generate(alpaca_ds,model,bz = args.bz//2,saes=saes,steering_fn = None,max_new_tokens=256,use_tqdm=True)
 
 
     ## Eval CE loss on the Alpaca/The Pile
-    base_alpaca_loss = get_ce_loss(alpaca_ds,base_alpaca_outputs,args.bz,model,use_tqdm=True)
+    base_alpaca_loss = get_ce_loss(alpaca_ds,base_alpaca_outputs,args.bz//2,model,use_tqdm=True)
     print (f'Base Alpaca CE Loss: {base_alpaca_loss:.3f}')
 
     base_pile_loss = []
@@ -245,7 +264,7 @@ def main():
                 else:
                     feat_set = global_feat_dict[baseline_name][harm_name] # take global feats
                 model.add_hook(resid_name_filter,partial(clamp_sae,saes = saes, circuit = feat_set,**fn_kwargs))
-            a_loss = get_ce_loss(alpaca_ds,base_alpaca_outputs,args.bz,model)
+            a_loss = get_ce_loss(alpaca_ds,base_alpaca_outputs,args.bz//2,model)
 
             p_loss = []
             batch_no = 0
@@ -302,7 +321,7 @@ def main():
                 else:
                     feat_set = global_feat_dict[sae_baseline][dataset_name]
                 for clamp_val in sae_clamp_range:
-                    sae_alpaca_gen = batch_generate(refusal_alpaca_ds,model,bz = bz,saes=saes,steering_fn = 'sae',circuit = feat_set,fn_kwargs = {'val': clamp_val,'ind':False,'multiply':False},max_new_tokens=100)
+                    sae_alpaca_gen = batch_generate(refusal_alpaca_ds,model,bz = args.bz,saes=saes,steering_fn = 'sae',circuit = feat_set,fn_kwargs = {'val': clamp_val,'ind':False,'multiply':False},max_new_tokens=100)
                     feat_refusal_score = np.mean([substring_matching_judge_fn(x) for x in sae_alpaca_gen])
                     sae_refusal_scores[sae_baseline][clamp_val].append(feat_refusal_score)
                 print (f'SAE ({sae_baseline}), : {sae_refusal_scores[sae_baseline]}')
