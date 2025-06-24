@@ -52,6 +52,17 @@ Set the `--dataset` to either `benchmark` (Section 4.1) or `cat_harm` for sectio
 
 We use transformer_lens (https://github.com/TransformerLensOrg/TransformerLens) for the LLMs and SAE_lens (https://github.com/jbloomAus/SAELens) for SAEs. We do not use NNSight as we had issues implementing attribution patching (taken from https://github.com/saprmarks/feature-circuits) on SAEs.
 
+## Citation
+Please cite our work if you found it useful! 
+
+```bibtex
+@article{jie2025understanding,
+  title={Understanding Refusal in Language Models with Sparse Autoencoders},
+  author={Jie Yeo, Wei and Prakash, Nirmalendu and Neo, Clement and Ka-Wei Lee, Roy and Cambria, Erik and Satapathy, Ranjan},
+  journal={arXiv e-prints},
+  pages={arXiv--2505},
+  year={2025}
+}
 
 
 
