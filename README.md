@@ -56,10 +56,9 @@ We use transformer_lens (https://github.com/TransformerLensOrg/TransformerLens) 
 Please cite our work if you found it useful! 
 
 ```bibtex
-@article{jie2025understanding,
+@article{yeo2025understanding,
   title={Understanding Refusal in Language Models with Sparse Autoencoders},
-  author={Jie Yeo, Wei and Prakash, Nirmalendu and Neo, Clement and Ka-Wei Lee, Roy and Cambria, Erik and Satapathy, Ranjan},
-  journal={arXiv e-prints},
-  pages={arXiv--2505},
+  author={Yeo, Wei Jie and Prakash, Nirmalendu and Neo, Clement and Lee, Roy Ka-Wei and Cambria, Erik and Satapathy, Ranjan},
+  journal={arXiv preprint arXiv:2505.23556},
   year={2025}
 }
