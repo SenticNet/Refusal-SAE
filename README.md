@@ -59,6 +59,7 @@ Please cite our work if you found it useful!
 @article{yeo2025understanding,
   title={Understanding Refusal in Language Models with Sparse Autoencoders},
   author={Yeo, Wei Jie and Prakash, Nirmalendu and Neo, Clement and Lee, Roy Ka-Wei and Cambria, Erik and Satapathy, Ranjan},
-  conference={Proceedings of EMNLP},
+  booktitle={Proceedings of EMNLP},
   year={2025}
+  url={https://sentic.net/faithful-natural-language-explanations.pdf}
 }
