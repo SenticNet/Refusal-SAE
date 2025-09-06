@@ -52,6 +52,10 @@ Set the `--dataset` to either `benchmark` (Section 4.1) or `cat_harm` for sectio
 
 We use transformer_lens (https://github.com/TransformerLensOrg/TransformerLens) for the LLMs and SAE_lens (https://github.com/jbloomAus/SAELens) for SAEs. We do not use NNSight as we had issues implementing attribution patching (taken from https://github.com/saprmarks/feature-circuits) on SAEs.
 
+## Paper
+
+https://sentic.net/faithful-natural-language-explanations.pdf
+
 ## Citation
 Please cite our work if you found it useful! 
 
