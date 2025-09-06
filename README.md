@@ -54,7 +54,7 @@ We use transformer_lens (https://github.com/TransformerLensOrg/TransformerLens) 
 
 ## Paper
 
-https://sentic.net/faithful-natural-language-explanations.pdf
+https://sentic.net/refusal-in-large-language-models.pdf
 
 ## Citation
 Please cite our work if you found it useful! 
